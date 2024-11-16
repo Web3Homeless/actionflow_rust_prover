@@ -1,10 +1,11 @@
 // Runs a simple Prover which connects to the Notary and notarizes a request/response from
 // example.com. The Prover then generates a proof and writes it to disk.
 
-use http_body_util::Empty;
+use http_body_util::{BodyExt, Empty};
 use hyper::{body::Bytes, Request, StatusCode};
 use hyper_util::rt::TokioIo;
-use std::ops::Range;
+use regex::bytes;
+use std::{borrow::Borrow, env, ops::Range, sync::Arc};
 use tlsn_core::proof::TlsProof;
 use tokio::io::AsyncWriteExt as _;
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
@@ -13,13 +14,23 @@ use tlsn_examples::run_notary;
 use tlsn_prover::tls::{state::Notarize, Prover, ProverConfig};
 
 // Setting of the application server
-const SERVER_DOMAIN: &str = "example.com";
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
 
 use std::str;
 
 #[tokio::main]
 async fn main() {
+
+    let args: Vec<String> = env::args().collect();
+
+    let domain = &args[1];
+    let path = &args[2];
+
+    let method = &args[3];
+    let post_data = &args[4];
+
+    print!("Making request.\nDomain: {}\nPath: {}\nMethod: {}\nPost Data: {}", domain, path, method, post_data);
+
     tracing_subscriber::fmt::init();
 
     let (prover_socket, notary_socket) = tokio::io::duplex(1 << 16);
@@ -30,7 +41,7 @@ async fn main() {
     // A Prover configuration
     let config = ProverConfig::builder()
         .id("example")
-        .server_dns(SERVER_DOMAIN)
+        .server_dns(domain)
         .build()
         .unwrap();
 
@@ -42,7 +53,7 @@ async fn main() {
         .unwrap();
 
     // Connect to the Server via TCP. This is the TLS client socket.
-    let client_socket = tokio::net::TcpStream::connect((SERVER_DOMAIN, 443))
+    let client_socket = tokio::net::TcpStream::connect((domain.to_string(), 443))
         .await
         .unwrap();
 
@@ -66,15 +77,16 @@ async fn main() {
 
     // Build a simple HTTP request with common headers
     let request = Request::builder()
-        .uri("/")
-        .header("Host", SERVER_DOMAIN)
+        .uri(path)
+        .header("Host", domain.to_string())
         .header("Accept", "*/*")
         // Using "identity" instructs the Server not to use compression for its HTTP response.
         // TLSNotary tooling does not support compression.
         .header("Accept-Encoding", "identity")
         .header("Connection", "close")
         .header("User-Agent", USER_AGENT)
-        .body(Empty::<Bytes>::new())
+        .method(method.as_str())
+        .body(post_data.to_string())
         .unwrap();
 
     println!("Starting an MPC TLS connection with the server");
@@ -82,9 +94,11 @@ async fn main() {
     // Send the request to the Server and get a response via the MPC TLS connection
     let response = request_sender.send_request(request).await.unwrap();
 
-    println!("Got a response from the server");
-
     assert!(response.status() == StatusCode::OK);
+
+    let payload = response.collect().await.unwrap().to_bytes();
+
+    println!("{:?}", payload);
 
     // The Prover task should be done now, so we can grab the Prover.
     let prover = prover_task.await.unwrap().unwrap();
