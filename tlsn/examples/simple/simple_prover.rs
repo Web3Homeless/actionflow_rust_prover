@@ -5,6 +5,7 @@ use http_body_util::{BodyExt, Empty};
 use hyper::{body::Bytes, Request, StatusCode};
 use hyper_util::rt::TokioIo;
 use regex::bytes;
+use tracing_subscriber::fmt::format;
 use std::{borrow::Borrow, env, ops::Range, sync::Arc};
 use tlsn_core::proof::TlsProof;
 use tokio::io::AsyncWriteExt as _;
@@ -28,8 +29,9 @@ async fn main() {
 
     let method = &args[3];
     let post_data = &args[4];
+    let authorization = &args[5];
 
-    print!("Making request.\nDomain: {}\nPath: {}\nMethod: {}\nPost Data: {}", domain, path, method, post_data);
+    print!("Making request.\nDomain: {}\nPath: {}\nMethod: {}\nPost Data: {}\nAuthorization: {}", domain, path, method, post_data, authorization);
 
     tracing_subscriber::fmt::init();
 
@@ -80,6 +82,7 @@ async fn main() {
         .uri(format!("https://{}{}", domain, path))
         .header("Host", domain.to_string())
         .header("Accept", "*/*")
+        .header("Authorization", authorization)
         // Using "identity" instructs the Server not to use compression for its HTTP response.
         // TLSNotary tooling does not support compression.
         .header("Accept-Encoding", "identity")
@@ -94,7 +97,7 @@ async fn main() {
     // Send the request to the Server and get a response via the MPC TLS connection
     let response = request_sender.send_request(request).await.unwrap();
 
-    assert!(response.status() == StatusCode::OK);
+    // assert!(response.status() == StatusCode::OK);
 
     let payload = response.collect().await.unwrap().to_bytes();
 
@@ -115,7 +118,7 @@ async fn main() {
     };
 
     // Write the proof to a file
-    let mut file = tokio::fs::File::create("simple_proof.json").await.unwrap();
+    let mut file = tokio::fs::File::create(format!("simple_proof_{}.json", domain)).await.unwrap();
     file.write_all(serde_json::to_string_pretty(&proof).unwrap().as_bytes())
         .await
         .unwrap();
