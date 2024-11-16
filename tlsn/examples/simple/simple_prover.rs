@@ -5,11 +5,11 @@ use http_body_util::{BodyExt, Empty};
 use hyper::{body::Bytes, Request, StatusCode};
 use hyper_util::rt::TokioIo;
 use regex::bytes;
-use tracing_subscriber::fmt::format;
 use std::{borrow::Borrow, env, ops::Range, sync::Arc};
 use tlsn_core::proof::TlsProof;
 use tokio::io::AsyncWriteExt as _;
 use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
+use tracing_subscriber::fmt::format;
 
 use tlsn_examples::run_notary;
 use tlsn_prover::tls::{state::Notarize, Prover, ProverConfig};
@@ -21,7 +21,6 @@ use std::str;
 
 #[tokio::main]
 async fn main() {
-
     let args: Vec<String> = env::args().collect();
 
     let domain = &args[1];
@@ -31,7 +30,10 @@ async fn main() {
     let post_data = &args[4];
     let authorization = &args[5];
 
-    print!("Making request.\nDomain: {}\nPath: {}\nMethod: {}\nPost Data: {}\nAuthorization: {}", domain, path, method, post_data, authorization);
+    print!(
+        "Making request.\nDomain: {}\nPath: {}\nMethod: {}\nPost Data: {}\nAuthorization: {}",
+        domain, path, method, post_data, authorization
+    );
 
     tracing_subscriber::fmt::init();
 
@@ -97,11 +99,12 @@ async fn main() {
     // Send the request to the Server and get a response via the MPC TLS connection
     let response = request_sender.send_request(request).await.unwrap();
 
-    // assert!(response.status() == StatusCode::OK);
-
+    let status_code = response.status();
     let payload = response.collect().await.unwrap().to_bytes();
 
-    println!("{:?}", payload);
+    println!("Response body: {:?}", payload);
+
+    assert!(status_code == StatusCode::OK, "Request failed");
 
     // The Prover task should be done now, so we can grab the Prover.
     let prover = prover_task.await.unwrap().unwrap();
@@ -118,13 +121,18 @@ async fn main() {
     };
 
     // Write the proof to a file
-    let mut file = tokio::fs::File::create(format!("simple_proof_{}.json", domain)).await.unwrap();
+    let mut file = tokio::fs::File::create(format!("simple_proof_{}.json", domain))
+        .await
+        .unwrap();
     file.write_all(serde_json::to_string_pretty(&proof).unwrap().as_bytes())
         .await
         .unwrap();
 
     println!("Notarization completed successfully!");
-    println!("The proof has been written to `{}`", format!("simple_proof_{}.json", domain));
+    println!(
+        "The proof has been written to `{}`",
+        format!("simple_proof_{}.json", domain)
+    );
 }
 
 /// Find the ranges of the public and private parts of a sequence.
