@@ -90,6 +90,7 @@ async fn main() {
         .header("Accept-Encoding", "identity")
         .header("Connection", "close")
         .header("User-Agent", USER_AGENT)
+        .header("Content-Type", "application/json")
         .method(method.as_str())
         .body(post_data.to_string())
         .unwrap();
