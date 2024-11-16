@@ -77,7 +77,7 @@ async fn main() {
 
     // Build a simple HTTP request with common headers
     let request = Request::builder()
-        .uri(path)
+        .uri(format!("https://{}{}", domain, path))
         .header("Host", domain.to_string())
         .header("Accept", "*/*")
         // Using "identity" instructs the Server not to use compression for its HTTP response.
